@@ -10,33 +10,7 @@ from filters import FilterPanel
 from info import InfoPanel,getImgInfo
 
 
-def markImage(img,x,y):
-    x,y = int(x),int(y)
-    if len(img.shape)==2:
-        img[y,:] = 0
-        img[:,x] = 0
-        img[x,y] = 255
-    else:
-        img[y,:,:] = 0
-        img[:,x,:] = 0
-        img[x,y,:] = 255
-
-def markCircle(img, x0, y0, r):
-    x0,y0 = 200,200
-    r = 100
-    w,h = img.shape[:2]
-    ys = range(max(int(y0-r),0),min(int(y0+r),h))
-    for y in ys:
-        try:
-            left = int(x0-np.sqrt(r**2-(y-y0)**2))
-        except:
-            print(r**2-(y-y0)**2)
-        if left > 0:
-            img[left,y] == 255
-        right = int(x0+np.sqrt(r**2-(y-y0)**2))
-        if right < w:
-            img[right,y] == 255
-    return img
+FRAME_RATE = 0.2
 
 class IntervalTimer(Thread):
     def __init__(self, interval, func):
@@ -122,6 +96,7 @@ class ImageView(wx.Panel):
             frame = cv.flip(frame,self.picFlip)
 
         self.img = frame
+        
         self.imgInfo = getImgInfo(frame)
         wx.CallAfter(pub.sendMessage,"updateinfo",msg=self.imgInfo)
 
@@ -162,11 +137,11 @@ class VideoView(ImageView):
                  size=(-1,-1), black=False):
         ImageView.__init__(self, parent, size=size, black=black)
         self.callback = callback
-        self.interval = IntervalTimer(0.07, self.player)    #每隔0.07s执行一次self.player
+        self.interval = IntervalTimer(FRAME_RATE, self.player)    #每隔0.07s执行一次self.player
 
     def player(self):
         if self.callback is not None:
-            frame = self.callback()
+            frame = self.callback()         #camera.cap.capture()
             wx.CallAfter(self.setFrame, frame)
 
     def start(self):

@@ -1,4 +1,5 @@
 import wx
+import time
 import numpy as np
 from wx.lib.pubsub import pub
 
@@ -6,7 +7,22 @@ infoDict = {
     'centers':[0,0],
     'shape':[0,0],
     'radius':[1],
+    'frames':[0],
+    'fps':[0,0]
 }
+
+
+def getFrameInfo():
+    t = [time.time()]
+    def recordTime():
+        t.append(time.time())
+        num = len(t)
+        if num < 2:
+            return {'frames':num,'fps':[0,0]}
+        fps = 0 if t[-1]==t[0] else num/(t[-1]-t[0])
+        lastps = 0 if t[-1]==t[-2] else 1/(t[-1]-t[-2])
+        return {'frames':[len(t)],'fps':[fps,lastps]}
+    return recordTime
 
 def getImgInfo(img):
     if len(img.shape)==3:
@@ -28,7 +44,9 @@ def getImgInfo(img):
 class InfoPanel(wx.Panel):
     def __init__(self,parent,size,call):
         wx.Panel.__init__(self,parent,size)
+        self.call = call
         self.isDynamic = True
+        self.frameRecord = getFrameInfo()
         xyBox = wx.BoxSizer(wx.VERTICAL)
 
         self.infoText = {}
@@ -50,6 +68,7 @@ class InfoPanel(wx.Panel):
     
     def OnStart(self,evt):
         self.isDynamic = not self.isDynamic
+        self.frameRecord = getFrameInfo()
         if self.isDynamic:
             self.call()
 
@@ -57,7 +76,9 @@ class InfoPanel(wx.Panel):
         if not self.isDynamic:
             return
         self.imgInfo = msg
+        self.imgInfo.update(self.frameRecord())
         for key in self.infoText:
             for i in range(len(self.infoText[key])):
                 self.infoText[key][i].SetValue(str(msg[key][i]))
 
+        
