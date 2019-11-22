@@ -3,12 +3,11 @@ import wx.grid
 import cv2 as cv
 from time import sleep
 from threading import Thread, Event
-from wx.lib.pubsub import pub
+from pubsub import pub
 import numpy as np
 import glob
 from panel_filters import FilterPanel
 from panel_info import InfoPanel,getImgInfo
-
 
 FRAME_RATE = 0.2
 
@@ -59,7 +58,7 @@ class ImageView(wx.Panel):
         self.hide = False
 
     def onShow(self, evt):
-        self.GetParent().Layout()
+        #self.GetParent().Layout()
         self.Layout()
 
     def onPaint(self, evt):
@@ -161,16 +160,17 @@ class Camera(object):
     def doConnect(self):
         self.isConnected = False
         self.cap = cv.VideoCapture(self.id)
-        sleep(0.2)
         if self.cap.isOpened():
             self.isConnected = True
-
+    
     def disConnect(self):
-        if self.isConnected:
-            if self.cap is not None:
-                if self.cap.isOpened():
-                    self.isConnected = False
-                    self.cap.release()
+        if not self.isConnected:
+            return
+        if self.cap is None:
+            return
+        if self.cap.isOpened():
+            self.isConnected = False
+            self.cap.release()
 
     def captureImage(self, flush=0):
         if not self.isConnected:
@@ -179,6 +179,7 @@ class Camera(object):
             for i in range(0, flush):
                 self.cap.grab()
         ret, self.img = self.cap.read()
+        print(ret)
         if ret:
             img = cv.cvtColor(self.img, cv.COLOR_BGR2RGB)
             return img
@@ -233,10 +234,11 @@ class MyFrame(wx.Frame):
 
     def InitToolBar(self):
         toolbar = self.CreateToolBar()
+        #toolName = {'Mode':101,'Open':102,'Close':103,'Save':104,'Flip':105,'Rot':106}
         toolName = ['Mode','Open','Close','Save','Flip','Rot']
         tools = {}
         for name in toolName:
-            tools[name]=toolbar.AddLabelTool(
+            tools[name]=toolbar.AddTool(
                 -1,name,wx.Bitmap('./img/'+name+'.png'))
             self.Bind(wx.EVT_TOOL,
                 lambda evt, mark = name : self.OnToolBar(evt,mark),
@@ -278,8 +280,8 @@ class MyFrame(wx.Frame):
                 self.cap.id = 0
             self.cap.doConnect()
         elif self.mode==1:
-            self.cap.disConnect()
-            self.vid.setDefaultFrame()
+            #self.cap.disConnect()
+            #self.vid.setDefaultFrame()
             dlg = wx.FileDialog(self,message="请打开图片",defaultDir='',
                                 defaultFile='',style=wx.FD_OPEN)
             if dlg.ShowModal() == wx.ID_OK:
@@ -292,7 +294,18 @@ class MyFrame(wx.Frame):
                 dlg.Destroy()
             self.initImg(filePath)
         elif self.mode==2:
-            pass
+            dlg = wx.FileDialog(self,message="请打开视频",defaultDir='',
+                                defaultFile='',style=wx.FD_OPEN)
+            if dlg.ShowModal() == wx.ID_OK:
+                filePath = dlg.GetPath()
+                print(filePath)
+                dirPath = '\\'.join(filePath.split('\\')[:-1])
+                backName = '.'+filePath.split('.')[-1]
+                self.files = glob.glob(dirPath+"\\*"+backName)
+                self.imgId = np.squeeze(np.where(np.array(self.files)==filePath))
+                dlg.Destroy()
+            self.cap.id = filePath
+            self.cap.doConnect()
 
     def imgClose(self):
         if self.mode==0:

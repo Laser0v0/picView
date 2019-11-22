@@ -1,7 +1,8 @@
 import wx
 import time
 import numpy as np
-from wx.lib.pubsub import pub
+#from wx.lib.pubsub import pub
+from pubsub import pub
 
 infoDict = {
     'center':[0,0],
