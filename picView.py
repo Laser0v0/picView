@@ -6,8 +6,8 @@ from threading import Thread, Event
 from wx.lib.pubsub import pub
 import numpy as np
 import glob
-from filters import FilterPanel
-from info import InfoPanel,getImgInfo
+from panel_filters import FilterPanel
+from panel_info import InfoPanel,getImgInfo
 
 
 FRAME_RATE = 0.2
@@ -245,7 +245,7 @@ class MyFrame(wx.Frame):
 
     def OnToolBar(self,evt,mark):
         if mark=='Mode':
-            self.mode = (self.mode+1)%3     ##目前的三种模式分别为相机、图片浏览器和视频
+            self.mode = (self.mode+1)%3     ##目前的三种模式分别为相机、图片浏览器和视频(预留)
             self.OnMode()
         else:
             op = {'Open':self.imgOpen,
@@ -385,7 +385,6 @@ class MyFrame(wx.Frame):
             self.vid.setFrame(self.img)
               
     def onClose(self, evt):
-        #self.vid.stop()
         self.cap.disConnect()
         evt.Skip()
 
