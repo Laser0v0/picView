@@ -8,8 +8,12 @@ import numpy as np
 import glob
 from panel_filters import FilterPanel
 from panel_info import InfoPanel,getImgInfo
+from panel_show import ShowPanel
 
-FRAME_RATE = 0.2
+FRAME_RATE = 0.15
+IMG_FILE_CLASS = ['bmp','jpg','png']
+VID_FILE_CLASS = ['flv','mp4','mkv']
+DEFAULT_IMG = "./img/init.png"
 
 class IntervalTimer(Thread):
     def __init__(self, interval, func):
@@ -41,7 +45,7 @@ class ImageView(wx.Panel):
         self.picRot = 0
         self.filterFunc = lambda img : img
 
-        self.defaultImage = cv.imread("./img/init.png")
+        self.defaultImage = cv.imread(DEFAULT_IMG)
         self.img = self.defaultImage
         self.setFrame(self.img)
         
@@ -179,7 +183,6 @@ class Camera(object):
             for i in range(0, flush):
                 self.cap.grab()
         ret, self.img = self.cap.read()
-        print(ret)
         if ret:
             img = cv.cvtColor(self.img, cv.COLOR_BGR2RGB)
             return img
@@ -195,36 +198,32 @@ class MyFrame(wx.Frame):
         wx.Frame.__init__(self, parent, size=(840, 480))
         self.mode = 0
         self.img = None
-        self.InitCapture()
-        self.InitParaBook()
+        self.cap = Camera(0)
+        self.InitPanels()
         self.InitToolBar()
 
     def OnMode(self):
+        self.mode = (self.mode+1)%3     ##目前的三种模式分别为相机、文件浏览器和算法(预留)
+        self.setPanels['Show'].setMode(self.mode)
         if self.mode == 0:
             self.cap.doConnect()
         elif self.mode==1:
             self.cap.disConnect()
-            #self.vid.stop()
         
-    def InitCapture(self,camId =0):
-        self.cap = Camera(camId)
-        #self.cap.setResolution(960,1280)
+    def InitCapture(self):
+        try:
+            self.fileId = int(self.fileSelect.GetValue())
+        except:
+            self.showText.SetValue('请输入正确的相机ID\n相机ID已置零')
+            self.fileId = 0
+        self.files = list(range(2))
+        self.cap.id = self.fileId
+        self.cap.doConnect()
 
-    def InitParaBook(self):
+    def InitPanels(self):
         self.vid = VideoView(self,self.cap.captureImage,size=(600,-1))
         self.vid.start()
-
-        self.paraBook = wx.Notebook(self,size=(300,-1))
-        names = ["Show","Info","Filter"]
-        self.setPanels = {'Show':wx.Panel(self.paraBook)}
-        self.setPanels['Info']=InfoPanel(self.paraBook,-1,self.calcValue)
-        self.setPanels['Filter'] = FilterPanel(self.paraBook,-1,self.convBack)
-        
-        for name in names:
-            self.paraBook.AddPage(self.setPanels[name],name)
-
-        self.InitShow()
-
+        self.InitParaBook()
         self.Bind(wx.EVT_CLOSE, self.onClose)
         box = wx.BoxSizer(wx.HORIZONTAL)
         box.Add(self.vid,1,wx.ALL|wx.EXPAND,0)
@@ -232,9 +231,21 @@ class MyFrame(wx.Frame):
         self.SetSizer(box)
         self.Center()
 
+    def InitParaBook(self):
+        self.paraBook = wx.Notebook(self,size=(300,-1))
+        names = ["Show","Info","Filter"]
+        self.setPanels = {'Show':ShowPanel(self.paraBook,-1,self.mode,self.showBack)}
+        self.setPanels['Info']=InfoPanel(self.paraBook,-1,self.calcValue)
+        self.setPanels['Filter'] = FilterPanel(self.paraBook,-1,self.convBack)
+        
+        for name in names:
+            self.paraBook.AddPage(self.setPanels[name],name)
+
+
+        
+
     def InitToolBar(self):
         toolbar = self.CreateToolBar()
-        #toolName = {'Mode':101,'Open':102,'Close':103,'Save':104,'Flip':105,'Rot':106}
         toolName = ['Mode','Open','Close','Save','Flip','Rot']
         tools = {}
         for name in toolName:
@@ -246,16 +257,13 @@ class MyFrame(wx.Frame):
         toolbar.Realize()
 
     def OnToolBar(self,evt,mark):
-        if mark=='Mode':
-            self.mode = (self.mode+1)%3     ##目前的三种模式分别为相机、图片浏览器和视频(预留)
-            self.OnMode()
-        else:
-            op = {'Open':self.imgOpen,
-                  'Close':self.imgClose,
-                  'Flip':self.imgFlip,
-                  'Rot':self.imgRot,
-                  'Save':self.imgSave}
-            op[mark]()
+        op = {'Mode':self.OnMode,
+              'Open':self.imgOpen,
+              'Close':self.imgClose,
+              'Save':self.imgSave,
+              'Flip':self.imgFlip,
+              'Rot':self.imgRot,}
+        op[mark]()
 
     def imgFlip(self):
         self.vid.flip(1,self.mode,self.img)
@@ -263,50 +271,9 @@ class MyFrame(wx.Frame):
     def imgRot(self):
         self.vid.rotate(1,self.mode,self.img)
 
-    def initImg(self,filePath):
-        self.oriImg = cv.imread(filePath)
-        self.oriImg = cv.cvtColor(self.oriImg,cv.COLOR_BGR2RGB)
-        self.img = self.oriImg
-        self.vid.setFrame(self.img)
-
     def imgOpen(self):
-        if self.mode==0:
-            if self.cap.isConnected:
-                self.cap.disConnect()
-            try:
-                self.cap.id = int(self.capIdSelect.GetValue())
-            except:
-                self.showText.SetValue('请输入正确的相机ID\n相机ID已置零')
-                self.cap.id = 0
-            self.cap.doConnect()
-        elif self.mode==1:
-            #self.cap.disConnect()
-            #self.vid.setDefaultFrame()
-            dlg = wx.FileDialog(self,message="请打开图片",defaultDir='',
-                                defaultFile='',style=wx.FD_OPEN)
-            if dlg.ShowModal() == wx.ID_OK:
-                filePath = dlg.GetPath()
-                print(filePath)
-                dirPath = '\\'.join(filePath.split('\\')[:-1])
-                backName = '.'+filePath.split('.')[-1]
-                self.files = glob.glob(dirPath+"\\*"+backName)
-                self.imgId = np.squeeze(np.where(np.array(self.files)==filePath))
-                dlg.Destroy()
-            self.initImg(filePath)
-        elif self.mode==2:
-            dlg = wx.FileDialog(self,message="请打开视频",defaultDir='',
-                                defaultFile='',style=wx.FD_OPEN)
-            if dlg.ShowModal() == wx.ID_OK:
-                filePath = dlg.GetPath()
-                print(filePath)
-                dirPath = '\\'.join(filePath.split('\\')[:-1])
-                backName = '.'+filePath.split('.')[-1]
-                self.files = glob.glob(dirPath+"\\*"+backName)
-                self.imgId = np.squeeze(np.where(np.array(self.files)==filePath))
-                dlg.Destroy()
-            self.cap.id = filePath
-            self.cap.doConnect()
-
+        self.setPanels['Show'].imgOpen()
+            
     def imgClose(self):
         if self.mode==0:
             self.cap.disConnect()
@@ -326,65 +293,20 @@ class MyFrame(wx.Frame):
         if dialogResult != wx.ID_SAVE:
             self.vid.saveImage(savePath,img)
 
-    def InitShow(self):
-        thisBox = wx.BoxSizer(wx.VERTICAL)
 
-        topBox = wx.BoxSizer()
-        self.capIdSelect = wx.TextCtrl(self.setPanels['Show'],value='0',size=(150,30))
-        btnSelectID = wx.Button(self.setPanels['Show'],label='select',size=(40,30))
-        topBox.Add(self.capIdSelect,proportion=0,flag=wx.EXPAND|wx.ALL, border=10)
-        topBox.Add(btnSelectID,proportion=0,flag=wx.EXPAND|wx.ALL, border=10)
-        
-        btnSelectID.Bind(wx.EVT_BUTTON,self.selectCapID)
-
-        upBox = wx.BoxSizer()
-        btnLabels = {'front':-1,'info':0,'back':1}
-        btnCtrls = {}
-        for key in btnLabels:
-            btnCtrls[key] = wx.Button(
-                self.setPanels['Show'],label=key,size=(60,30))
-            upBox.Add(btnCtrls[key],proportion=1,
-                flag=wx.EXPAND|wx.ALL|wx.ALIGN_CENTER,border=10)
-            self.Bind(wx.EVT_BUTTON,
-                lambda evt,mark = btnLabels[key] : self.OnImgCtrl(evt,mark),
-                btnCtrls[key])
-
-        midBox = wx.BoxSizer()
-        self.exp0 = wx.StaticText(self.setPanels['Show'],
-            label='0',size=(20,-1))
-        self.expSlider=wx.Slider(self.setPanels['Show'],
-            minValue=1,maxValue=1000,size=(250,-1))
-        self.expEnd = wx.StaticText(self.setPanels['Show'],
-            label='0',size=(20,-1))
-        midBox.Add(self.exp0,proportion=0,flag=wx.LEFT|wx.RIGHT,border=10)
-        midBox.Add(self.expSlider,proportion=1,flag=wx.EXPAND)
-        midBox.Add(self.expEnd,proportion=0,flag=wx.LEFT|wx.RIGHT,border=10)
-
-        self.showText = wx.TextCtrl(self.setPanels['Show'],
-            size=(-1,-1),style=wx.TE_MULTILINE)
-
-        thisBox.Add(topBox,proportion=0,flag=wx.TOP,border=20)
-        thisBox.Add(upBox,proportion=0,flag=wx.ALL,border=10)
-        thisBox.Add(midBox,proportion=0,flag=wx.ALL,border=10)
-        thisBox.Add(self.showText,proportion=1,flag=wx.ALL|wx.EXPAND,border=10)
-
-        self.setPanels['Show'].SetSizer(thisBox)
-
-    def selectCapID(self,evt):
-        self.imgOpen()
-
-    def OnImgCtrl(self,evt,mark):
-        if mark:
-            self.imgRoll(mark)
+    # showPanel的回调函数
+    def showBack(self,flag,id=0,img=None):
+        if img is not None:
+            self.img = img
+            self.vid.setFrame(self.img)
+            return
+        if flag:
+            self.cap.disConnect()
+            self.cap.id = id
+            self.cap.doConnect()
         else:
-            pass
+            self.cap.disConnect()
     
-    def imgRoll(self,num):
-        self.imgId = (self.imgId + num)%len(self.files)
-        self.initImg(self.files[self.imgId])
-        name = self.files[self.imgId].split('\\')[-1]
-        self.capIdSelect.SetValue(name)
-
     # filterPanel的回调函数
     def convBack(self,func):
         self.vid.setFilter(func)
@@ -400,9 +322,6 @@ class MyFrame(wx.Frame):
     def onClose(self, evt):
         self.cap.disConnect()
         evt.Skip()
-
-    def setExposure(self,evt):
-        self.cap.cap.set(cv.CV_CAP_PROP_EXPOSURE,float(self.expText.Value))
        
 class MyApp(wx.App):
     def OnInit(self):

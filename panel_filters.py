@@ -75,10 +75,16 @@ def test(img):
     return new
 
 def detectFacula(img):
-    info = getImgInfo(img)
     new = copy.deepcopy(img)
-    center = (int(info['center'][0]),int(info['center'][1]))
-    cv.circle(new,center,int(info['radius'][0]),(255,0,0),2)
+    new[new<20] = 0
+    info = getImgInfo(new)
+    try:
+        center = (int(info['center'][0]),int(info['center'][1]))
+        r = info['radius']
+        cv.circle(new,center,int(info['radius'][0]),(255,0,0),2)
+    except:
+        pass
+        #cv.circle(new,(100,100),10,(255,0,0),2)
     return new
 
 def cvCircle(img,param1,param2,minRadius,maxRadius):

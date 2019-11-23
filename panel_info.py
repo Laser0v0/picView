@@ -1,7 +1,6 @@
 import wx
 import time
 import numpy as np
-#from wx.lib.pubsub import pub
 from pubsub import pub
 
 infoDict = {
@@ -11,7 +10,6 @@ infoDict = {
     'frames':[0],
     'fps':[0,0]
 }
-
 
 def getFrameInfo():
     t = [time.time()]
@@ -81,5 +79,3 @@ class InfoPanel(wx.Panel):
         for key in self.infoText:
             for i in range(len(self.infoText[key])):
                 self.infoText[key][i].SetValue(str(msg[key][i]))
-
-        
