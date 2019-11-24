@@ -11,6 +11,8 @@ from panel_info import getImgInfo
 #3 在genFilter的filterDict中添加函数映射
 #4 写出映射函数
 
+BTN_START = 'start'
+BTN_STOP = 'stop'
 
 labelDict = {
     'conv':['input','rand','randgauss','test'],
@@ -43,6 +45,7 @@ infoDict = {
     'facula':'标记光斑',
     'fourier':'傅立叶变换',
 }
+
 
 def genFilter(flag='input',paras=[],pane=None):
     a,b,c,d = paras
@@ -104,7 +107,6 @@ def cvCircle(img,param1,param2,minRadius,maxRadius):
         cv.circle(cimg,(i[0],i[1]),2,(0,0,255,3))
     return cimg
 
-
 faceCascade = cv.CascadeClassifier('xml/cvFace.xml')
 eyeCascade = cv.CascadeClassifier('xml/cvEye.xml')
 def faceDetect(img,minNeighbor=5,scale=1.2,withEye=False):
@@ -126,6 +128,14 @@ def faceDetect(img,minNeighbor=5,scale=1.2,withEye=False):
             
     return new
 
+#函数复合
+def comDef(defList):
+    if len(defList)>2:
+        return comDef([defList[0]]+comDef(defList[1:]))
+    elif len(defList) == 1:
+        return defList
+    else:
+        return [lambda x : defList[0](defList[1](x))]
 
 class FilterPanel(wx.Panel):
     def __init__(self,parent,size=-1,call=None):
@@ -134,6 +144,7 @@ class FilterPanel(wx.Panel):
         self.call = call
         self.history = []
         self.func = lambda img : img
+        self.isUpdated = False
         self.mode = 0
         self.Init()
 
@@ -150,8 +161,8 @@ class FilterPanel(wx.Panel):
             value=filters[0],size=(60,30),choices=filters)
         self.subFilter = wx.ComboBox(self,
             value=subfilters[0],size=(60,30),choices=subfilters)
-        btnSetFilter = wx.Button(self,label='filter',size=(55,25))
-        btnSetFilter.Bind(wx.EVT_BUTTON, self.convFilter)
+        self.btnSetFilter = wx.Button(self,label=BTN_START,size=(55,25))
+        self.btnSetFilter.Bind(wx.EVT_BUTTON, self.convFilter)
         self.modeCombo.Bind(wx.EVT_COMBOBOX,self.OnMode)
         self.mainFilter.Bind(wx.EVT_COMBOBOX,self.OnMainFilter)
         self.subFilter.Bind(wx.EVT_COMBOBOX,self.OnSubFilter)
@@ -162,7 +173,7 @@ class FilterPanel(wx.Panel):
             flag=wx.LEFT|wx.RIGHT|wx.ALIGN_CENTER_HORIZONTAL,border=5)
         upBox.Add(self.subFilter,1,
             flag=wx.LEFT|wx.RIGHT|wx.ALIGN_CENTER_HORIZONTAL,border=5)
-        upBox.Add(btnSetFilter,1,
+        upBox.Add(self.btnSetFilter,1,
             flag=wx.RIGHT|wx.ALIGN_CENTER_HORIZONTAL,border=5)
 
         midBox = wx.BoxSizer()
@@ -195,21 +206,21 @@ class FilterPanel(wx.Panel):
 
     def OnMode(self,evt):
         self.mode = self.modeCombo.GetCurrentSelection()
-        if self.mode != 2:
-            self.history = []
-            self.UpdateFunc()
+        self.btnSetFilter.SetLabel(BTN_START)
+        self.history = []
+        self.doFilter = True if self.mode else False
+        self.call(lambda x : x)
 
     def OnMainFilter(self,evt):
         filters = labelDict[self.mainFilter.GetValue()]
         for i in range(len(filters)):
             self.subFilter.SetString(i, filters[i])
-        if self.mode != 2:
-            self.Update()
 
     def OnSubFilter(self,evt):
         self.UpdateFunc()
 
     def UpdateFunc(self):
+        self.isUpdated = True
         sFilter = self.subFilter.GetValue()
         self.filterInfo.SetValue(infoDict[sFilter])
 
@@ -219,53 +230,29 @@ class FilterPanel(wx.Panel):
         filPane = self.getFilPane(
             int(paras[0]),int(paras[1])) if sFilter=='input' else []
         
-        self.func = genFilter(sFilter,paras,filPane)
+        func = genFilter(sFilter,paras,filPane)
 
         if self.mode == 2:
-            self.history.append(self.func)
-            self.func = self.getHistoryFunc()
-
-    def getHistoryFunc(self):
-        func = lambda x : x
-        for his in self.history:
-            func = lambda x : his(func(x))
-        return func
-
-
-    def getSubFilter(self,flag):
-        pass
-
+            self.history.append(func)
+            self.func = comDef(self.history)[0]
+        else:
+            self.func = func
 
     def convFilter(self,evt):
-        self.doFilter = True if self.mode else not self.doFilter
+        if not self.isUpdated:
+            self.UpdateFunc()
+        self.isUpdated = False
+        if self.mode < 1:
+            self.doFilter = not self.doFilter
+            flag = BTN_STOP if self.doFilter else BTN_START
+            self.btnSetFilter.SetLabel(flag)
+
         func = self.func if self.doFilter else lambda img : img
         self.call(func)
         
-        '''
-        mode = self.modeCombo.GetCurrentSelection()
-        mFilter = self.mainFilter.GetValue()
-        sFilter = self.subFilter.GetValue()
-        
-        paras = [float(self.filterParas[i].GetValue()) 
-                        for i in range(4)]
-        filPane = self.getFilPane(
-            int(paras[0]),int(paras[1])) if sFilter=='input' else []
-        
-        self.doFilter = True if mode>0 else not self.doFilter
-        
-        func = genFilter(sFilter,paras,filPane) \
-            if self.doFilter else lambda img : img
-        
-        if mode == 2:
-            #print(mode)
-            self.history = lambda img : func(self.history(img))
-            func = self.history
-        
-        self.call(func)
-        '''
-
     def getFilPane(self,m,n):
-        filPane = [float(self.filterGrid.GetCellValue(i+1,j+1)) for i in range(n) for j in range(m)]
+        filPane = [float(self.filterGrid.GetCellValue(i+1,j+1)) 
+                for i in range(n) for j in range(m)]
         filPane = np.array(filPane).reshape(n,m)
         return filPane
     
