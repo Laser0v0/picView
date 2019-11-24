@@ -24,8 +24,11 @@ def getFrameInfo():
     return recordTime
 
 def getImgInfo(img):
-    if len(img.shape)==3:
-        img = np.mean(1.0*img,2)
+    try:
+        if len(img.shape)==3:
+            img = np.mean(1.0*img,2)
+    except:
+        return infoDict
 
     nY,nX = img.shape
     xySum = np.sum(img)
@@ -63,7 +66,7 @@ class InfoPanel(wx.Panel):
         xyBox.Add(stBtn, flag=wx.TOP, border=10)
         
         self.SetSizer(xyBox)
-        pub.subscribe(self.OnInfo,"updateinfo")
+        pub.subscribe(self.OnInfo,"updateinfo")#将self.OnInfo绑定"updateinfo"标识，从setFrame中回传信息
     
     def OnStart(self,evt):
         self.isDynamic = not self.isDynamic

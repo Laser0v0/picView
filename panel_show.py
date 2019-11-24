@@ -1,8 +1,8 @@
 import wx
 import glob
+from pubsub import pub
 import cv2 as cv
 import numpy as np
-
 
 IMG_FILE_CLASS = ['bmp','jpg','png']
 VID_FILE_CLASS = ['flv','mp4','mkv']
@@ -12,7 +12,13 @@ class ShowPanel(wx.Panel):
         wx.Panel.__init__(self,parent)
         self.call = call
         self.setMode(mode)
+        self.state = ''
+        self.Init()
 
+        #pub.subscribe(self.OnInfo,"captureinfo")
+
+
+    def Init(self):
         thisBox = wx.BoxSizer(wx.VERTICAL)
 
         topBox = wx.BoxSizer()
@@ -92,10 +98,11 @@ class ShowPanel(wx.Panel):
         try:
             self.fileId = int(self.fileSelect.GetValue())
         except:
-            self.showText.SetValue('请输入正确的相机ID\n相机ID已置零')
+            self.state='请输入正确的相机ID\n相机ID已置零'
             self.fileId = 0
         self.files = list(range(2))
         self.call(True,self.fileId)#self.cap.doConnect()
+        self.setState(self)
 
     def imgOpen(self):
         if self.mode==0:
@@ -109,3 +116,9 @@ class ShowPanel(wx.Panel):
             dlg.Destroy()
             self.initFile(filePath)
 
+    def setState(self):
+        self.showText.SetValue(self.state)
+
+    def OnInfo(self,msg):
+        self.state = msg
+        self.setState()

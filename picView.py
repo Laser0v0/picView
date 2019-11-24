@@ -10,25 +10,26 @@ from panel_filters import FilterPanel
 from panel_info import InfoPanel,getImgInfo
 from panel_show import ShowPanel
 
-FRAME_RATE = 0.15
-IMG_FILE_CLASS = ['bmp','jpg','png']
-VID_FILE_CLASS = ['flv','mp4','mkv']
+FRAME_RATE = 0.1
 DEFAULT_IMG = "./img/init.png"
 
 class IntervalTimer(Thread):
     def __init__(self, interval, func):
         Thread.__init__(self)
-        self.stop_event = Event()
+        self.stopEvent = Event()
         self._interval = interval
         self.func = func
     
     def stop(self):
         if self.isAlive():
-            self.stop_event.set()
+            self.stopEvent.set()
             self.join()
+        
+    def setFrameRate(self,interval):
+        self._interval = interval
 
     def run(self):
-        while not self.stop_event.is_set():
+        while not self.stopEvent.is_set():
             self.func()
             sleep(self._interval)
 
@@ -62,7 +63,6 @@ class ImageView(wx.Panel):
         self.hide = False
 
     def onShow(self, evt):
-        #self.GetParent().Layout()
         self.Layout()
 
     def onPaint(self, evt):
@@ -76,23 +76,19 @@ class ImageView(wx.Panel):
     def onResize(self, evt):
         self.refreshBitmap()
 
-    def flip(self,nFlip,isStatic,img):
-        self.picFlip = (self.picFlip+2*nFlip)%4-1
+    def setFlipRot(self,flag,num,isStatic,img):
+        if flag == "flip":
+            self.picFlip = (self.picFlip+2*num)%4-1
+        else:
+            self.picRot = (self.picRot+num)%2
         if isStatic:
            self.setFrame(img)
-
-    def rotate(self,nRot,isStatic,img):
-        self.picRot = (self.picRot+nRot)%2
-        if isStatic:
-            self.setFrame(img)
 
     def setFilter(self,func):
         self.filterFunc = func
     
     #显示图片
     def setFrame(self, frame):
-        if frame is None:
-            return
         if self.picRot==1:
             frame = cv.transpose(frame)
         if self.picFlip < 2:
@@ -104,7 +100,6 @@ class ImageView(wx.Panel):
         wx.CallAfter(pub.sendMessage,"updateinfo",msg=self.imgInfo)
 
         h, w = frame.shape[:2]
-
         frame = self.filterFunc(frame)
         
         self.image = wx.ImageFromBuffer(w, h, frame)
@@ -117,16 +112,16 @@ class ImageView(wx.Panel):
         cv.imwrite(savePath,img)
         img = self.filterFunc(img)
         cv.imwrite(filtPath,img)
+    
+    def setDefaultFrame(self):
+        self.setFrame(self.defaultImage)
 
     def refreshBitmap(self):
         (w, h, self.xOffset, self.yOffset) = self.getBestSize()
         if w>0 and h>0:
             self.bitmap = wx.Bitmap(self.image.Scale(w,h,self.quality))            
             self.Refresh()
-
-    def setDefaultFrame(self):
-        self.setFrame(self.defaultImage)
-
+    
     #调整最合适的尺寸
     def getBestSize(self):
         shapes = np.array(self.GetSize())
@@ -140,12 +135,13 @@ class VideoView(ImageView):
                  size=(-1,-1), black=False):
         ImageView.__init__(self, parent, size=size, black=black)
         self.callback = callback
-        self.interval = IntervalTimer(FRAME_RATE, self.player)    #每隔0.07s执行一次self.player
+        self.interval = IntervalTimer(FRAME_RATE, self.player)
 
     def player(self):
         if self.callback is not None:
             frame = self.callback()         #camera.cap.capture()
             wx.CallAfter(self.setFrame, frame)
+            
 
     def start(self):
         self.interval.start()
@@ -166,6 +162,18 @@ class Camera(object):
         self.cap = cv.VideoCapture(self.id)
         if self.cap.isOpened():
             self.isConnected = True
+            self.getInfo()
+    
+    def getInfo(self):
+        info = '曝光时间为:'+str(self.cap.get(15))
+        info += "\n图像亮度为" + str(self.cap.get(10))
+        info += "\n图像对比度为" + str(self.cap.get(11))
+        info += "\n饱和度" + str(self.cap.get(12))
+        info += "\n色调" + str(self.cap.get(13))
+        info += "\n增益" + str(self.cap.get(14))
+        wx.CallAfter(pub.sendMessage,"captureinfo",msg=info)
+
+
     
     def disConnect(self):
         if not self.isConnected:
@@ -241,9 +249,6 @@ class MyFrame(wx.Frame):
         for name in names:
             self.paraBook.AddPage(self.setPanels[name],name)
 
-
-        
-
     def InitToolBar(self):
         toolbar = self.CreateToolBar()
         toolName = ['Mode','Open','Close','Save','Flip','Rot']
@@ -266,10 +271,10 @@ class MyFrame(wx.Frame):
         op[mark]()
 
     def imgFlip(self):
-        self.vid.flip(1,self.mode,self.img)
+        self.vid.setFlipRot('flip',1,self.mode,self.img)
 
     def imgRot(self):
-        self.vid.rotate(1,self.mode,self.img)
+        self.vid.setFlipRot('rot',1,self.mode,self.img)
 
     def imgOpen(self):
         self.setPanels['Show'].imgOpen()
@@ -310,11 +315,13 @@ class MyFrame(wx.Frame):
     # filterPanel的回调函数
     def convBack(self,func):
         self.vid.setFilter(func)
-        self.vid.setFrame(self.img)
+        if self.mode > 1:
+            self.vid.setFrame(self.img)
 
     #infoPanel的回调函数
     def calcValue(self):
-        if self.mode == 0:
+        print(self.mode)
+        if self.mode < 1:
             return
         elif self.mode == 1:
             self.vid.setFrame(self.img)
